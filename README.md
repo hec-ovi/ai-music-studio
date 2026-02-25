@@ -1,101 +1,86 @@
 # AI Music Studio
 
-Production-style local AI album generation on AMD ROCm (Strix Halo / gfx1151):
-- concept planning (LLM)
-- multi-track music generation
-- optional album cover generation
-- live progress streaming to frontend
-- per-track playback and download
-- editable plan review before rendering
-- persistent album/session library (SQLite)
-- one-click MP4 export (cover + track audio)
-- YouTube upload package export (manifest + template script)
+**Local, production-style AI album generation on AMD ROCm**
 
-Everything runs locally in Docker containers.
+`ai-music-studio` turns one concept into a complete album pipeline:
+- LLM album planning
+- song-by-song music generation
+- optional cover generation
+- real-time streaming progress
+- persistent session library
+- MP3 + MP4 + YouTube-ready export artifacts
 
-## What This System Delivers
+Everything runs locally in Docker.
 
-- End-to-end album creation from one prompt.
-- Two generation modes:
-  - `Auto`: concept -> plan -> songs -> cover -> complete.
-  - `Review`: concept -> plan pause -> manual plan edits -> approve -> songs -> cover -> complete.
-- Song-by-song progress events (SSE) and incremental track availability.
-- Configurable approximate song length at creation time.
-- Optional cover generation (`include_cover=true|false`).
-- Selectable cover size (`cover_size=512|1024`).
-- ROCm-compatible music/image inference on AMD iGPU.
-- Deterministic fallback planning when LLM JSON output is malformed.
-- Persistent album/session history in a tiny local SQLite DB.
-- Album library navigation after restarts (no lost sessions).
-- Export pipeline:
-  - per-track MP4 rendering from cover + MP3
-  - YouTube package artifacts (`youtube_manifest.json`, uploader template, instructions)
+## Why This Repo
 
-## Stack (Full, Pro-Level)
+- **End-to-end album generation** from a single prompt
+- **Two workflows**:
+  - `Auto`: plan -> songs -> cover -> done
+  - `Review`: plan -> edit/approve -> songs -> cover -> done
+- **Live UX** with SSE status + per-track playback/download as tracks finish
+- **Resume-safe** with SQLite-backed session history
+- **Export-ready** output for publishing workflows
 
-- Orchestration:
-  - Docker Compose (5 services)
-  - FastAPI backend (SSE, orchestration, persistence)
-- Planning / language:
-  - Ollama
-  - `gpt-oss:20b`
-- Music inference:
-  - ACE-Step 1.5 (turbo path)
-  - PyTorch ROCm / HIP
-  - Per-song prompt + optional CoT enhancement flags
-- Image inference:
-  - FLUX.2-klein-4B
-  - diffusers + transformers + accelerate
-  - Runtime load/generate/unload behavior
-- Frontend:
-  - React 19
-  - Vite 7
-  - Zustand state
-  - Framer Motion
-  - Tailwind v4
-- Data / API:
-  - OpenAPI (`/openapi.json`)
-  - Swagger (`/docs`)
-  - ReDoc (`/redoc`)
-  - Server-Sent Events for generation stream
-  - SQLite session DB (`output/studio.db`)
+## Tech Stack
 
-## High-Impact Capabilities
+### Core Platform
+- Docker Compose (multi-service orchestration)
+- FastAPI backend (orchestration + SSE + persistence)
+- SQLite session DB (`output/studio.db`)
 
-- Plan review + approval:
-  - pause after planning
-  - edit album metadata + cover prompt + per-song prompts/lyrics/meta
-  - approve and resume generation from saved plan
-- Output organization:
-  - one album folder per generated album name
-  - `cover.png` and `NN_<TrackName>.mp3` in the same folder
-- Session persistence:
-  - all albums indexed in SQLite
-  - list/detail APIs for historical navigation
-- Export pipeline:
-  - MP4 per track (`NN_<TrackName>.mp4`)
-  - YouTube package artifacts inside album folder
-- Frontend generation UX:
-  - animated progress state
-  - real-time status
-  - play/download controls as tracks complete
+### AI/Inference
+- Ollama (`gpt-oss:20b`) for planning
+- ACE-Step 1.5 for music generation
+- FLUX.2-klein-4B for album cover generation
+- PyTorch ROCm/HIP (AMD GPU path)
+- diffusers + transformers + accelerate
 
-## Prerequisites
+### Frontend
+- React 19
+- Vite 7
+- Zustand
+- Framer Motion
+- Tailwind v4
 
-- Ubuntu 25.10+ (kernel/driver stack compatible with ROCm for your hardware)
-- AMD Strix Halo class device (gfx1151 target in this repo)
-- Docker + Compose plugin
-- Sufficient unified memory/VRAM headroom (64GB+ recommended, 128GB ideal)
+### API/Docs
+- OpenAPI: `/openapi.json`
+- Swagger: `/docs`
+- ReDoc: `/redoc`
+
+## Architecture
+
+```text
+Frontend (React)
+  -> FastAPI backend (SSE orchestration)
+    -> Ollama (album plan JSON)
+    -> ACE-Step (track generation, sequential)
+    -> FLUX (optional cover)
+  -> output/albums/<Album Name>/
+  -> output/studio.db
+```
+
+## Features
+
+- Plan generation with strict JSON guardrails + repair fallback
+- Plan review/edit before rendering (album fields + per-song prompts)
+- Song length control (`30..420s`)
+- Optional cover mode (`include_cover=true|false`)
+- Cover size options (`512` / `1024`)
+- Session library (`GET /api/albums`) for history + resume
+- Per-track MP4 export (static cover + AAC audio)
+- YouTube package export:
+  - `youtube_manifest.json`
+  - `youtube_upload_template.py`
+  - `YOUTUBE_UPLOAD.md`
 
 ## Quick Start
 
 ```bash
 git clone https://github.com/your-org/ai-music-studio.git
 cd ai-music-studio
-
 cp .env.template .env
-# edit .env and set host directories
-
+# edit .env host paths
 docker compose up -d --build
 ```
 
@@ -104,194 +89,132 @@ Open:
 - Backend health: `http://localhost:8000/health`
 - API docs: `http://localhost:8000/redoc`
 
-## Configuration (`.env`)
+## Configuration
 
-Required host-path variables:
+Set these in `.env`:
 
-- `OLLAMA_MODELS_DIR`: Ollama model storage
-- `HF_CACHE_DIR`: Hugging Face cache for FLUX/ACE-Step assets
-- `ACESTEP_CHECKPOINTS_DIR`: ACE-Step checkpoints path
-- `OUTPUT_DIR`: generated output root
+### Required host paths
+- `OLLAMA_MODELS_DIR`
+- `HF_CACHE_DIR`
+- `ACESTEP_CHECKPOINTS_DIR`
+- `OUTPUT_DIR`
 
-Port/config variables:
+### Ports/models
+- `OLLAMA_MODEL` (default: `gpt-oss:20b`)
+- `ACESTEP_MODEL` (default: `acestep-v15-turbo`)
+- `ACESTEP_PORT` (default: `8001`)
+- `FLUX_PORT` (default: `8002`)
+- `BACKEND_PORT` (default: `8000`)
+- `FRONTEND_PORT` (default: `5173`)
+- `VITE_API_URL` (default: `http://localhost:8000`)
 
-- `ACESTEP_PORT` (default `8001`)
-- `FLUX_PORT` (default `8002`)
-- `BACKEND_PORT` (default `8000`)
-- `FRONTEND_PORT` (default `5173`)
-- `VITE_API_URL` (default `http://localhost:8000`)
-
-## API (Core)
+## API Overview
 
 ### Album lifecycle
 
-- `POST /api/albums`
-  - create a new album request
-  - returns `{ album_id, status }`
-
-- `GET /api/albums/{album_id}/stream`
-  - SSE stream for generation
-  - query params:
-    - `concept` (required unless `use_saved_plan=true`)
-    - `num_songs` (1..12)
-    - `song_length_seconds` (30..420, optional)
-    - `include_cover` (`true|false`)
-    - `cover_size` (`512|1024`)
-    - `stop_after_plan` (`true|false`)
-    - `use_saved_plan` (`true|false`)
-
-- `GET /api/albums/{album_id}/result`
-  - fetch final result object
-
-- `GET /api/albums`
-  - list persisted album sessions (library)
-
-- `GET /api/albums/{album_id}/session`
-  - full persisted session detail (songs + exports)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/albums` | Create album request (`album_id`) |
+| `GET` | `/api/albums/{album_id}/stream` | SSE generation stream |
+| `GET` | `/api/albums/{album_id}/result` | Final album payload |
 
 ### Plan review/edit
 
-- `GET /api/albums/{album_id}/plan`
-  - fetch full editable plan
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/albums/{album_id}/plan` | Fetch editable plan |
+| `PUT` | `/api/albums/{album_id}/plan` | Save edited plan |
 
-- `PUT /api/albums/{album_id}/plan`
-  - update full editable plan before song generation starts
+### Session library
 
-### Export APIs
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/albums` | List persisted sessions |
+| `GET` | `/api/albums/{album_id}/session` | Full session detail |
 
-- `POST /api/albums/{album_id}/exports/mp4`
-  - render one MP4 per generated song (static cover + song audio)
+### Export
 
-- `POST /api/albums/{album_id}/exports/youtube-package`
-  - generate YouTube metadata package artifacts
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/albums/{album_id}/exports/mp4` | Export one MP4 per song |
+| `POST` | `/api/albums/{album_id}/exports/youtube-package` | Export YouTube package files |
 
 ## SSE Events
 
-Typical stream sequence (auto mode):
-
-```jsonc
-{ "event": "planning", "progress": 0.05, "data": null }
-{ "event": "plan_ready", "progress": 0.15, "data": { "album_name": "...", "songs": [...] } }
-{ "event": "song_start", "progress": 0.20, "data": { "index": 0, "name": "..." } }
-{ "event": "song_ready", "progress": 0.70, "data": { "index": 0, "audio_url": "..." } }
-{ "event": "cover_generating", "progress": 0.93, "data": null }
-{ "event": "cover_ready", "progress": 0.98, "data": { "cover_url": "..." } }
-{ "event": "complete", "progress": 1.0, "data": { "album_id": "...", "songs": [...] } }
-```
-
-Review mode adds:
-
-```jsonc
-{ "event": "plan_review_required", "progress": 0.17, "data": { "album_id": "..." } }
-```
+Main event types:
+- `planning`
+- `plan_ready`
+- `plan_review_required`
+- `song_start`
+- `song_progress`
+- `song_ready`
+- `cover_generating`
+- `cover_ready`
+- `complete`
+- `error`
 
 ## Output Layout
 
-Output is consolidated under one album folder (human-readable album name):
-
 ```text
 output/
+  studio.db
   albums/
-    Zen Flute Temple/
+    Tideleaf Reverie/
       plan.json
       cover.png
-      01_Morning Mist.mp3
-      01_Morning Mist.mp4
+      01_Bamboo Dawn Mist.mp3
+      01_Bamboo Dawn Mist.mp4
+      ...
       mp4_index.json
       youtube_manifest.json
       youtube_upload_template.py
       YOUTUBE_UPLOAD.md
-      02_...
-  studio.db
 ```
 
 Notes:
-- Folder names are sanitized for filesystem safety.
-- Name collisions are handled with numeric suffixes (e.g. `Album Name (2)`).
+- Folder names are sanitized.
+- Name collisions auto-suffix (e.g. `Album (2)`).
 
-## Frontend UX Summary
+## Frontend UX
 
-- Album creator:
-  - concept input
-  - song count
-  - approximate song length control
-  - cover toggle
-  - cover size selector (`512`/`1024`)
-  - plan review toggle
-  - library panel with persisted sessions and quick actions
-- Generation progress:
-  - animated stage indicators
-  - per-song readiness badges
-  - inline audio playback
-  - one-click download per track
-- Plan review screen:
-  - album name/description editing
-  - cover prompt editing
-  - per-song prompt/lyrics/tempo/duration editing
+- Minimal creator page with generation settings
+- Live generation monitor with per-track controls
+- Plan review editor before render
+- Session library panel (open/resume/export)
+- Result page with playback + export actions
 
-## YouTube Pipeline Feasibility (Planned)
+## YouTube Pipeline Status
 
-Yes, this is feasible.
+Implemented now:
+- MP4 render per track
+- structured metadata manifest export
+- upload template script + operator notes
 
-### What YouTube API supports
+Still pending for full automation:
+- OAuth credentials + actual `videos.insert` / playlist API calls
 
-- Upload videos: `videos.insert`
-- Set metadata (title, description, tags, privacy): `snippet` + `status` fields
-- Set per-video thumbnail (your generated cover): `thumbnails.set`
-- Create playlist: `playlists.insert`
-- Add uploaded videos to playlist in order: `playlistItems.insert`
-
-### Practical implementation pattern for this repo
-
-1. For each generated `.mp3`, render a static-cover `.mp4` (FFmpeg).
-2. Upload each `.mp4` with song title/description.
-3. Apply the generated album cover as video thumbnail.
-4. Create playlist named with album name.
-5. Insert each uploaded video in album order.
-
-### Compliance / policy considerations
-
-- AI/synthetic content:
-  - YouTube requires disclosure in certain cases (see “altered or synthetic content” policy).
-  - API supports `status.containsSyntheticMedia` in video status metadata.
-- Monetization:
-  - Reused/low-transform content can fail YPP monetization review.
-  - If monetization is a goal, add meaningful transformation and value.
-- Quota:
-  - Upload-related methods consume quota units; design retries and batching carefully.
-
-### Official docs
-
-- Videos upload: `videos.insert`  
-  `https://developers.google.com/youtube/v3/docs/videos/insert`
-- Set thumbnail: `thumbnails.set`  
-  `https://developers.google.com/youtube/v3/docs/thumbnails/set`
-- Playlist items: `playlistItems.insert`  
-  `https://developers.google.com/youtube/v3/docs/playlistItems/insert`
-- Quota costs:  
-  `https://developers.google.com/youtube/v3/determine_quota_cost`
-- Altered/synthetic content disclosure:  
-  `https://support.google.com/youtube/answer/14328491`
-- Monetization policy references:  
-  `https://support.google.com/youtube/answer/1311392`
+Useful docs:
+- `https://developers.google.com/youtube/v3/docs/videos/insert`
+- `https://developers.google.com/youtube/v3/docs/thumbnails/set`
+- `https://developers.google.com/youtube/v3/docs/playlistItems/insert`
 
 ## Development
 
-Backend:
+### Backend (local dev)
 
 ```bash
 cd backend
 uv run uvicorn src.main:app --reload --reload-dir src
 ```
 
-Frontend:
+### Frontend (local dev)
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-Type/build checks:
+### Checks
 
 ```bash
 python -m compileall -q backend/src backend/tests flux/src
@@ -299,12 +222,16 @@ cd backend && python -m unittest discover -s tests -v
 cd frontend && npm run build
 ```
 
-## Troubleshooting Notes
+## Troubleshooting
 
 - `ERR_INCOMPLETE_CHUNKED_ENCODING`:
-  - usually indicates stream termination from backend exception or upstream disconnect.
-  - check backend + inference container logs together.
-- Missing shared libs in containers (`libgomp.so.1`, etc.):
-  - ensure Dockerfile runtime deps include required system libraries.
-- ROCm model/toolchain fallback warnings:
-  - some ACE-Step paths may fall back from Triton/Inductor to PyTorch backend while still using GPU.
+  - stream ended unexpectedly; inspect backend + inference logs together.
+- `ImportError: libgomp.so.1`:
+  - missing runtime libs in container image.
+- `MIOpen ... workspace required ... provided ...`:
+  - not a crash; ROCm skipped a high-workspace solver and used a fallback kernel.
+  - typically performance impact only.
+
+## License
+
+Add your preferred license (`MIT`, `Apache-2.0`, etc.).
