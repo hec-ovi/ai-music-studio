@@ -1,0 +1,160 @@
+services:
+
+  # ─── LLM: Album planning ─────────────────────────────────────────────────
+  # Model loads on first request, unloads immediately (KEEP_ALIVE=0).
+  ollama:
+    build:
+      context: ./ollama
+    container_name: music-ollama
+    restart: unless-stopped
+    privileged: true
+    ipc: host
+    ports:
+      - "11434:11434"
+    volumes:
+      - ${OLLAMA_MODELS_DIR}:/ollama-models
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:20b}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-8192}
+      # Unload model immediately after response — GPU cleared before FLUX runs
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-0}
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      HSA_OVERRIDE_GFX_VERSION: "11.5.1"
+      HIP_VISIBLE_DEVICES: "0"
+      AMD_SERIALIZE_KERNEL: "0"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    networks:
+      - music-net
+
+  # ─── FLUX.2-klein: Album cover generation ────────────────────────────────
+  # Model loads on /generate, unloads (torch.cuda.empty_cache) before returning.
+  # GPU is clear after every call.
+  flux:
+    build:
+      context: ./flux
+    container_name: music-flux
+    restart: unless-stopped
+    privileged: true
+    ipc: host
+    ports:
+      - "${FLUX_PORT:-8002}:8002"
+    volumes:
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${OUTPUT_DIR:-./output}:/output
+    environment:
+      FLUX_MODEL: ${FLUX_MODEL:-black-forest-labs/FLUX.2-klein-4B}
+      HSA_OVERRIDE_GFX_VERSION: "11.5.1"
+      HIP_VISIBLE_DEVICES: "0"
+      AMD_SERIALIZE_KERNEL: "0"
+      HF_HOME: /root/.cache/huggingface
+      PYTORCH_HIP_ALLOC_CONF: expandable_segments:True
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    networks:
+      - music-net
+
+  # ─── ACE-Step 1.5: Music generation ─────────────────────────────────────
+  # Lazy-loading proxy: health check passes instantly (no model in memory).
+  # The model loads ONLY when the first /release_task request arrives —
+  # which happens AFTER Ollama and FLUX have both finished and unloaded.
+  acestep:
+    build:
+      context: ./acestep
+    container_name: music-acestep
+    restart: unless-stopped
+    privileged: true
+    ipc: host
+    ports:
+      - "${ACESTEP_PORT:-8001}:8001"
+    volumes:
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${ACESTEP_CHECKPOINTS_DIR}:/app/acestep/checkpoints
+      - ${OUTPUT_DIR:-./output}:/output
+    environment:
+      ACESTEP_CONFIG_PATH: ${ACESTEP_MODEL:-acestep-v15-turbo}
+      ACESTEP_INTERNAL_PORT: "8011"
+      PORT: "8001"
+      HSA_OVERRIDE_GFX_VERSION: "11.5.1"
+      HIP_VISIBLE_DEVICES: "0"
+      AMD_SERIALIZE_KERNEL: "0"
+      HF_HOME: /root/.cache/huggingface
+      PYTORCH_HIP_ALLOC_CONF: expandable_segments:True
+    # Health check passes in ~5s (proxy starts instantly, no model pre-loaded)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - music-net
+
+  # ─── Backend: FastAPI orchestrator ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+    container_name: music-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ${OUTPUT_DIR:-./output}:/output
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gpt-oss:20b}
+      FLUX_URL: http://flux:8002
+      ACESTEP_URL: http://acestep:8001
+      OUTPUT_DIR: /output
+    depends_on:
+      ollama:
+        condition: service_healthy
+      flux:
+        condition: service_healthy
+      acestep:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - music-net
+
+  # ─── Frontend: React + Vite ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: music-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - music-net
+
+networks:
+  music-net:
+    driver: bridge

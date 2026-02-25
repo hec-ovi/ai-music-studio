@@ -1,0 +1,26 @@
+# Agent (never committed)
+agent/
+
+# Environment
+.env
+
+# Node
+node_modules/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# UV
+.uv/
+
+# Output (generated content — bind-mounted)
+output/
+
+# OS
+.DS_Store
+Thumbs.db
