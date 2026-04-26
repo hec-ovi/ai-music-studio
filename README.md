@@ -1,6 +1,21 @@
-# AI Music Studio
+<h1 align="center">ai-music-studio</h1>
 
-**Local, production-style AI album generation on AMD ROCm**
+<p align="center">
+  <strong>Local AI album generation on AMD ROCm: LLM album plan + ACE-Step 1.5 tracks + FLUX cover art, with SSE-streamed progress and YouTube-ready exports.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Working-brightgreen" alt="Status" />
+  <img src="https://img.shields.io/badge/AMD-ROCm-ED1C24?logo=amd&logoColor=white" alt="ROCm" />
+  <img src="https://img.shields.io/badge/ACE--Step-1.5-9B59B6" alt="ACE-Step" />
+  <img src="https://img.shields.io/badge/FLUX-2_klein_4B-FF6B6B" alt="FLUX" />
+  <img src="https://img.shields.io/badge/Ollama-111111?logo=ollama&logoColor=white" alt="Ollama" />
+  <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
+</p>
+
+---
+
+## What this is
 
 `ai-music-studio` turns one concept into a complete album pipeline:
 - LLM album planning
@@ -234,4 +249,13 @@ cd frontend && npm run build
 
 ## License
 
-Add your preferred license (`MIT`, `Apache-2.0`, etc.).
+[MIT](LICENSE) for original code in this repository (FastAPI orchestration backend, React frontend, Compose configs, scripts).
+
+Third-party model weights and runtimes downloaded or invoked at runtime retain their own upstream licenses, including:
+- ACE-Step 1.5 (check upstream terms before commercial release)
+- FLUX.2-klein-4B (check upstream terms before commercial release)
+- Ollama runtime (MIT) and any models pulled through it (per-model license)
+- diffusers, transformers, accelerate (Apache 2.0)
+- PyTorch ROCm (BSD-3-Clause)
+
+This repository does not redistribute model weights. Anything you generate with this stack is subject to the terms of the specific model that produced it; verify those terms before publishing or monetizing the output.
